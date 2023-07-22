@@ -1,16 +1,37 @@
-FROM node:18-alpine AS builder
-WORKDIR /app
-COPY package*.json .
-RUN npm ci
-COPY . .
-RUN npm run build
-RUN npm prune --production
+# stage build
+FROM node:16-alpine
 
-FROM node:18-alpine
 WORKDIR /app
-COPY --from=builder /app/build build/
-COPY --from=builder /app/node_modules node_modules/
-COPY package.json .
+
+# copy everything to the container
+COPY . .
+
+# clean install all dependencies
+RUN npm ci
+
+# remove potential security issues
+RUN npm audit fix
+    
+# build SvelteKit app
+RUN npm run build
+
+
+# stage run
+FROM node:16-alpine
+
+WORKDIR /app
+
+# copy dependency list
+COPY --from=0 /app/package*.json ./
+
+# clean install dependencies, no devDependencies, no prepare script
+RUN npm ci --production --ignore-scripts
+
+# remove potential security issues
+RUN npm audit fix
+
+# copy built SvelteKit app to /app
+COPY --from=0 /app/build ./
+
 EXPOSE 3000
-ENV NODE_ENV=production
-CMD [ "node", "build" ]
+CMD ["node", "./index.js"]
